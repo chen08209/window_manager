@@ -90,6 +90,17 @@ class WindowManagerPlugin : public flutter::Plugin {
     sz->rgrc[0].right += l;
     sz->rgrc[0].bottom += t;
   }
+
+  void adjustMaximizedToWorkArea(HWND hwnd, NCCALCSIZE_PARAMS* sz) {
+    HMONITOR monitor = MonitorFromRect(&sz->rgrc[0], MONITOR_DEFAULTTONEAREST);
+    if (monitor != NULL) {
+      MONITORINFO monitorInfo;
+      monitorInfo.cbSize = sizeof(MONITORINFO);
+      if (TRUE == GetMonitorInfo(monitor, &monitorInfo)) {
+        sz->rgrc[0] = monitorInfo.rcWork;
+      }
+    }
+  }
 };
 
 // static
@@ -164,8 +175,8 @@ std::optional<LRESULT> WindowManagerPlugin::HandleWindowProc(HWND hWnd,
     // This must always be last.
     if (wParam && window_manager->title_bar_style_ == "hidden") {
       if (window_manager->IsMaximized()) {
-        // Adjust the borders when maximized so the app isn't cut off
-        adjustNCCALCSIZE(hWnd, reinterpret_cast<NCCALCSIZE_PARAMS*>(lParam));
+        // Constrain client area to work area (excludes taskbar)
+        adjustMaximizedToWorkArea(hWnd, reinterpret_cast<NCCALCSIZE_PARAMS*>(lParam));
       } else {
         NCCALCSIZE_PARAMS* sz = reinterpret_cast<NCCALCSIZE_PARAMS*>(lParam);
         // on windows 10, if set to 0, there's a white line at the top
