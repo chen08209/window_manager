@@ -24,7 +24,22 @@ struct _WindowManagerPlugin {
   GdkEventButton _event_button;
   GdkDevice* grab_pointer;
   GtkCssProvider* css_provider;
+  bool _has_saved_geometry;
+  gint _saved_x;
+  gint _saved_y;
+  gint _saved_width;
+  gint _saved_height;
+  gint _restore_corrections;
+  guint _restore_timeout_id;
 };
+
+// A window manager places the window when it is mapped, which can land after
+// the map handler has already restored the geometry.
+static const guint kRestoreSettleMilliseconds = 150;
+
+// Bounded so an uncooperative window manager and the restore never trade
+// positions indefinitely.
+static const gint kMaxRestoreCorrections = 5;
 
 G_DEFINE_TYPE(WindowManagerPlugin, window_manager_plugin, g_object_get_type())
 
@@ -39,6 +54,58 @@ GtkWindow* get_window(WindowManagerPlugin* self) {
 
 GdkWindow* get_gdk_window(WindowManagerPlugin* self) {
   return gtk_widget_get_window(GTK_WIDGET(get_window(self)));
+}
+
+static bool is_geometry_owned_by_wm(WindowManagerPlugin* self) {
+  GtkWindow* window = get_window(self);
+  if (window == nullptr)
+    return true;
+  if (gtk_window_is_maximized(window))
+    return true;
+
+  GdkWindow* gdk_window = get_gdk_window(self);
+  if (gdk_window == nullptr)
+    return false;
+
+  return gdk_window_get_state(gdk_window) & GDK_WINDOW_STATE_FULLSCREEN;
+}
+
+static void apply_saved_geometry(WindowManagerPlugin* self) {
+  GtkWindow* window = get_window(self);
+  if (window == nullptr)
+    return;
+
+  gtk_window_move(window, self->_saved_x, self->_saved_y);
+  gtk_window_resize(window, self->_saved_width, self->_saved_height);
+}
+
+static gboolean on_restore_settled(gpointer data) {
+  WindowManagerPlugin* self = WINDOW_MANAGER_PLUGIN(data);
+  self->_restore_timeout_id = 0;
+  if (self->_has_saved_geometry) {
+    apply_saved_geometry(self);
+    self->_has_saved_geometry = false;
+  }
+  return G_SOURCE_REMOVE;
+}
+
+static void correct_placement(WindowManagerPlugin* self) {
+  if (!self->_has_saved_geometry || self->_restore_timeout_id == 0)
+    return;
+  if (self->_restore_corrections >= kMaxRestoreCorrections)
+    return;
+
+  GtkWindow* window = get_window(self);
+  if (window == nullptr)
+    return;
+
+  gint x, y;
+  gtk_window_get_position(window, &x, &y);
+  if (x == self->_saved_x && y == self->_saved_y)
+    return;
+
+  self->_restore_corrections++;
+  apply_saved_geometry(self);
 }
 
 static FlMethodResponse* set_as_frameless(WindowManagerPlugin* self,
@@ -99,14 +166,19 @@ static FlMethodResponse* show(WindowManagerPlugin* self) {
 }
 
 static FlMethodResponse* hide(WindowManagerPlugin* self) {
-  gint x, y, width, height;
-  // store the bound of window before hide
-  gtk_window_get_position(get_window(self), &x, &y);
-  gtk_window_get_size(get_window(self), &width, &height);
+  // GTK drops the placement of an unmapped window, so the geometry is stored
+  // here and applied again from on_window_map_event.
+  self->_has_saved_geometry = !is_geometry_owned_by_wm(self);
+  if (self->_has_saved_geometry) {
+    gtk_window_get_position(get_window(self), &self->_saved_x, &self->_saved_y);
+    gtk_window_get_size(get_window(self), &self->_saved_width,
+                        &self->_saved_height);
+  }
   gtk_widget_hide(GTK_WIDGET(get_window(self)));
-  // restore the bound of window after hide
-  gtk_window_move(get_window(self), x, y);
-  gtk_window_resize(get_window(self), width, height);
+  // For a window manager that honours the position hint of an unmapped window.
+  if (self->_has_saved_geometry) {
+    apply_saved_geometry(self);
+  }
   g_autoptr(FlValue) result = fl_value_new_bool(true);
   return FL_METHOD_RESPONSE(fl_method_success_response_new(result));
 }
@@ -938,6 +1010,10 @@ static void window_manager_plugin_handle_method_call(
 
 static void window_manager_plugin_dispose(GObject* object) {
   WindowManagerPlugin* self = WINDOW_MANAGER_PLUGIN(object);
+  if (self->_restore_timeout_id != 0) {
+    g_source_remove(self->_restore_timeout_id);
+    self->_restore_timeout_id = 0;
+  }
   g_clear_object(&self->css_provider);
   g_free(self->title_bar_style_);
   G_OBJECT_CLASS(window_manager_plugin_parent_class)->dispose(object);
@@ -994,6 +1070,22 @@ gboolean on_window_hide(GtkWidget* widget, gpointer data) {
   return false;
 }
 
+gboolean on_window_map_event(GtkWidget* widget,
+                             GdkEvent* event,
+                             gpointer data) {
+  WindowManagerPlugin* plugin = WINDOW_MANAGER_PLUGIN(data);
+  if (plugin->_has_saved_geometry) {
+    plugin->_restore_corrections = 0;
+    apply_saved_geometry(plugin);
+    if (plugin->_restore_timeout_id != 0) {
+      g_source_remove(plugin->_restore_timeout_id);
+    }
+    plugin->_restore_timeout_id =
+        g_timeout_add(kRestoreSettleMilliseconds, on_restore_settled, plugin);
+  }
+  return false;
+}
+
 gboolean on_window_resize(GtkWidget* widget, gpointer data) {
   WindowManagerPlugin* plugin = WINDOW_MANAGER_PLUGIN(data);
   _emit_event(plugin, "resize");
@@ -1002,6 +1094,7 @@ gboolean on_window_resize(GtkWidget* widget, gpointer data) {
 
 gboolean on_window_move(GtkWidget* widget, GdkEvent* event, gpointer data) {
   WindowManagerPlugin* plugin = WINDOW_MANAGER_PLUGIN(data);
+  correct_placement(plugin);
   _emit_event(plugin, "move");
   return false;
 }
@@ -1111,6 +1204,8 @@ void window_manager_plugin_register_with_registrar(
                    plugin);
   g_signal_connect(get_window(plugin), "hide", G_CALLBACK(on_window_hide),
                    plugin);
+  g_signal_connect(get_window(plugin), "map-event",
+                   G_CALLBACK(on_window_map_event), plugin);
   g_signal_connect(get_window(plugin), "check-resize",
                    G_CALLBACK(on_window_resize), plugin);
   g_signal_connect(get_window(plugin), "configure-event",
