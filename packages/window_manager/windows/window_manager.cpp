@@ -38,6 +38,21 @@
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
 
+/// Window attribute that selects how the window corners are rounded.
+///
+/// Redefined for the same reason as DWMWA_USE_IMMERSIVE_DARK_MODE.
+#ifndef DWMWA_WINDOW_CORNER_PREFERENCE
+#define DWMWA_WINDOW_CORNER_PREFERENCE 33
+#endif
+
+#ifndef DWMWCP_DONOTROUND
+#define DWMWCP_DONOTROUND 1
+#endif
+
+#ifndef DWMWCP_ROUND
+#define DWMWCP_ROUND 2
+#endif
+
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 
 /// Registry key for app theme preference.
@@ -149,6 +164,8 @@ class WindowManager {
   double WindowManager::GetOpacity();
   void WindowManager::SetOpacity(const flutter::EncodableMap& args);
   void WindowManager::SetBrightness(const flutter::EncodableMap& args);
+  void WindowManager::SetWindowCornerPreference(
+      const flutter::EncodableMap& args);
   void WindowManager::SetIgnoreMouseEvents(const flutter::EncodableMap& args);
   void WindowManager::PopUpWindowMenu(const flutter::EncodableMap& args);
   void WindowManager::StartDragging();
@@ -1053,6 +1070,16 @@ void WindowManager::SetBrightness(const flutter::EncodableMap& args) {
     DwmSetWindowAttribute(hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
                           &enable_dark_mode, sizeof(enable_dark_mode));
   }
+}
+
+void WindowManager::SetWindowCornerPreference(
+    const flutter::EncodableMap& args) {
+  bool round = std::get<bool>(args.at(flutter::EncodableValue("round")));
+
+  HWND hWnd = GetMainWindow();
+  DWORD preference = round ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
+  DwmSetWindowAttribute(hWnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference,
+                        sizeof(preference));
 }
 
 void WindowManager::SetIgnoreMouseEvents(const flutter::EncodableMap& args) {

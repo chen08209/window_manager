@@ -29,6 +29,8 @@ const kWindowEventLeaveFullScreen = 'leave-full-screen';
 const kWindowEventDocked = 'docked';
 const kWindowEventUndocked = 'undocked';
 
+const kWindowEventShouldTerminate = 'should-terminate';
+
 enum DockSide { left, right }
 
 // WindowManager
@@ -71,6 +73,7 @@ class WindowManager {
         kWindowEventLeaveFullScreen: listener.onWindowLeaveFullScreen,
         kWindowEventDocked: listener.onWindowDocked,
         kWindowEventUndocked: listener.onWindowUndocked,
+        kWindowEventShouldTerminate: listener.onWindowShouldTerminate,
       };
       funcMap[eventName]?.call();
     }
@@ -696,6 +699,18 @@ class WindowManager {
       'brightness': brightness.name,
     };
     await _channel.invokeMethod('setBrightness', arguments);
+  }
+
+  /// Sets whether the corners of the window are rounded.
+  ///
+  /// Only has an effect on Windows 11 and later.
+  ///
+  /// @platforms windows
+  Future<void> setWindowCornerPreference({required bool round}) async {
+    final Map<String, dynamic> arguments = {
+      'round': round,
+    };
+    await _channel.invokeMethod('setWindowCornerPreference', arguments);
   }
 
   /// Makes the window ignore all mouse events.

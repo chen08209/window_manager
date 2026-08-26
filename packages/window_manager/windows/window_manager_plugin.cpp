@@ -575,6 +575,11 @@ void WindowManagerPlugin::HandleMethodCall(
         std::get<flutter::EncodableMap>(*method_call.arguments());
     window_manager->SetBrightness(args);
     result->Success(flutter::EncodableValue(true));
+  } else if (method_name.compare("setWindowCornerPreference") == 0) {
+    const flutter::EncodableMap& args =
+        std::get<flutter::EncodableMap>(*method_call.arguments());
+    window_manager->SetWindowCornerPreference(args);
+    result->Success(flutter::EncodableValue(true));
   } else if (method_name.compare("setIgnoreMouseEvents") == 0) {
     const flutter::EncodableMap& args =
         std::get<flutter::EncodableMap>(*method_call.arguments());

@@ -2,9 +2,13 @@ import Cocoa
 import FlutterMacOS
 
 public class WindowManagerPlugin: NSObject, FlutterPlugin {
+    /// The registered plugin, for the application delegate to reach.
+    public static var instance: WindowManagerPlugin?
+
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: "window_manager", binaryMessenger: registrar.messenger)
         let instance = WindowManagerPlugin(registrar, channel)
+        WindowManagerPlugin.instance = instance
         registrar.addMethodCallDelegate(instance, channel: channel)
     }
     
@@ -269,6 +273,12 @@ public class WindowManagerPlugin: NSObject, FlutterPlugin {
         }
     }
     
+    /// Call from `NSApplicationDelegate.applicationShouldTerminate` so Dart can
+    /// run its shutdown before the process goes away.
+    public func handleShouldTerminate() {
+        _emitEvent("should-terminate")
+    }
+
     public func _emitEvent(_ eventName: String) {
         let args: NSDictionary = [
             "eventName": eventName,

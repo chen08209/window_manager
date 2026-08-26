@@ -52,6 +52,15 @@ abstract mixin class WindowListener {
   /// @platforms windows
   void onWindowUndocked() {}
 
+  /// Emitted when the application has been asked to terminate, before the
+  /// process goes away.
+  ///
+  /// On macOS this is only delivered when the application delegate forwards
+  /// `applicationShouldTerminate` to `WindowManagerPlugin.handleShouldTerminate`.
+  ///
+  /// @platforms macos
+  void onWindowShouldTerminate() {}
+
   /// Emitted all events.
   void onWindowEvent(String eventName) {}
 }
