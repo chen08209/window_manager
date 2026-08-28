@@ -98,6 +98,9 @@ public class WindowManagerPlugin: NSObject, FlutterPlugin {
         case "isVisible":
             result(windowManager.isVisible())
             break
+        case "isPositionSupported":
+            result(true)
+            break
         case "isMaximized":
             result(windowManager.isMaximized())
             break

@@ -415,6 +415,13 @@ class WindowManager {
     return bounds.topLeft;
   }
 
+  /// Returns `bool` - Whether the platform lets the app read and set the
+  /// window position. Compositors that own window placement (e.g. Wayland)
+  /// report false, and position calls are ineffective there.
+  Future<bool> isPositionSupported() async {
+    return await _channel.invokeMethod<bool>('isPositionSupported') ?? false;
+  }
+
   /// Moves window to position.
   Future<void> setPosition(Offset position, {bool animate = false}) async {
     await setBounds(

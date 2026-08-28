@@ -2,6 +2,9 @@
 
 #include <flutter_linux/flutter_linux.h>
 #include <gtk/gtk.h>
+#ifdef GDK_WINDOWING_X11
+#include <gdk/gdkx.h>
+#endif
 
 #define WINDOW_MANAGER_PLUGIN(obj)                                     \
   (G_TYPE_CHECK_INSTANCE_CAST((obj), window_manager_plugin_get_type(), \
@@ -346,22 +349,39 @@ static FlMethodResponse* get_bounds(WindowManagerPlugin* self) {
 }
 
 static FlMethodResponse* set_bounds(WindowManagerPlugin* self, FlValue* args) {
+  GtkWindow* window = get_window(self);
   FlValue* x = fl_value_lookup_string(args, "x");
   FlValue* y = fl_value_lookup_string(args, "y");
   if (x != nullptr && y != nullptr) {
-    gtk_window_move(get_window(self), static_cast<gint>(fl_value_get_float(x)),
+    gtk_window_move(window, static_cast<gint>(fl_value_get_float(x)),
                     static_cast<gint>(fl_value_get_float(y)));
   }
 
   FlValue* width = fl_value_lookup_string(args, "width");
   FlValue* height = fl_value_lookup_string(args, "height");
   if (width != nullptr && height != nullptr) {
-    gtk_window_resize(get_window(self),
-                      static_cast<gint>(fl_value_get_float(width)),
-                      static_cast<gint>(fl_value_get_float(height)));
+    gint w = static_cast<gint>(fl_value_get_float(width));
+    gint h = static_cast<gint>(fl_value_get_float(height));
+    if (gtk_widget_get_mapped(GTK_WIDGET(window))) {
+      gtk_window_resize(window, w, h);
+    } else {
+      // A resize request loses to the default size hint when an unmapped
+      // window is mapped, so set the default size instead.
+      gtk_window_set_default_size(window, w, h);
+    }
   }
 
   g_autoptr(FlValue) result = fl_value_new_bool(true);
+  return FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+}
+
+static FlMethodResponse* is_position_supported(WindowManagerPlugin* self) {
+  bool supported = false;
+#ifdef GDK_WINDOWING_X11
+  GdkScreen* screen = gtk_window_get_screen(get_window(self));
+  supported = screen != nullptr && GDK_IS_X11_SCREEN(screen);
+#endif
+  g_autoptr(FlValue) result = fl_value_new_bool(supported);
   return FL_METHOD_RESPONSE(fl_method_success_response_new(result));
 }
 
@@ -943,6 +963,8 @@ static void window_manager_plugin_handle_method_call(
     response = get_bounds(self);
   } else if (g_strcmp0(method, "setBounds") == 0) {
     response = set_bounds(self, args);
+  } else if (g_strcmp0(method, "isPositionSupported") == 0) {
+    response = is_position_supported(self);
   } else if (g_strcmp0(method, "setMinimumSize") == 0) {
     response = set_minimum_size(self, args);
   } else if (g_strcmp0(method, "setMaximumSize") == 0) {

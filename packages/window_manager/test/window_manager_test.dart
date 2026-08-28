@@ -77,4 +77,10 @@ void main() {
       'shouldTerminate',
     ]);
   });
+
+  test('isPositionSupported queries the platform capability', () async {
+    expect(await windowManager.isPositionSupported(), isFalse);
+
+    expect(calls.map((call) => call.method), <String>['isPositionSupported']);
+  });
 }
