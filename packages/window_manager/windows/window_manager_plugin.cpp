@@ -8,13 +8,76 @@
 #include <flutter/standard_method_codec.h>
 
 #include <codecvt>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <sstream>
+#include <string>
 
 #include "window_manager.cpp"
 
 namespace {
+
+constexpr wchar_t kRunnerWindowClass[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
+
+// Lower-cased because GetModuleFileNameW keeps the case the process was
+// launched with, and the same executable must always map to one message.
+std::wstring GetExecutablePath() {
+  wchar_t path[MAX_PATH] = {};
+  ::GetModuleFileNameW(nullptr, path, MAX_PATH);
+  ::CharLowerW(path);
+  return path;
+}
+
+// Scoped to the executable so unrelated Flutter apps never react to it. The
+// path is hashed because registered message names share the 255 character
+// atom limit.
+UINT GetActivateMessage() {
+  static const UINT message = [] {
+    uint64_t hash = 14695981039346656037ull;
+    for (wchar_t c : GetExecutablePath()) {
+      hash = (hash ^ static_cast<uint64_t>(c)) * 1099511628211ull;
+    }
+    std::wostringstream name;
+    name << L"window_manager.activate:" << std::hex << hash;
+    return ::RegisterWindowMessageW(name.str().c_str());
+  }();
+  return message;
+}
+
+struct RunningWindowSearch {
+  std::wstring executable;
+  HWND found = nullptr;
+};
+
+BOOL CALLBACK MatchRunningWindow(HWND hwnd, LPARAM lparam) {
+  auto* search = reinterpret_cast<RunningWindowSearch*>(lparam);
+  wchar_t window_class[64] = {};
+  ::GetClassNameW(hwnd, window_class, 64);
+  if (_wcsicmp(window_class, kRunnerWindowClass) != 0) {
+    return TRUE;
+  }
+  DWORD pid = 0;
+  ::GetWindowThreadProcessId(hwnd, &pid);
+  if (pid == ::GetCurrentProcessId()) {
+    return TRUE;
+  }
+  HANDLE process =
+      ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+  if (process == nullptr) {
+    return TRUE;
+  }
+  wchar_t executable[MAX_PATH] = {};
+  DWORD length = MAX_PATH;
+  const BOOL queried =
+      ::QueryFullProcessImageNameW(process, 0, executable, &length);
+  ::CloseHandle(process);
+  if (queried && _wcsicmp(executable, search->executable.c_str()) == 0) {
+    search->found = hwnd;
+    return FALSE;
+  }
+  return TRUE;
+}
 
 bool IsWindows11OrGreater() {
   DWORD dwVersion = 0;
@@ -119,6 +182,12 @@ WindowManagerPlugin::WindowManagerPlugin(
       [this](HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
         return HandleWindowProc(hWnd, message, wParam, lParam);
       });
+  // UIPI drops what a lower-integrity relaunch sends to an elevated window:
+  // the activate request and the WM_COPYDATA hand-off of its command line.
+  HWND root = ::GetAncestor(registrar->GetView()->GetNativeWindow(), GA_ROOT);
+  ::ChangeWindowMessageFilterEx(root, GetActivateMessage(), MSGFLT_ALLOW,
+                                nullptr);
+  ::ChangeWindowMessageFilterEx(root, WM_COPYDATA, MSGFLT_ALLOW, nullptr);
   channel = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
       registrar->messenger(), "window_manager",
       &flutter::StandardMethodCodec::GetInstance());
@@ -338,6 +407,9 @@ std::optional<LRESULT> WindowManagerPlugin::HandleWindowProc(HWND hWnd,
     } else {
       _EmitEvent("hide");
     }
+  } else if (message != WM_NULL && message == GetActivateMessage()) {
+    _EmitEvent("activate");
+    return 0;
   } else if (message == WM_WINDOWPOSCHANGED) {
     if (window_manager->IsAlwaysOnBottom()) {
       const flutter::EncodableMap& args = {
@@ -612,4 +684,20 @@ void WindowManagerPluginRegisterWithRegistrar(
   WindowManagerPlugin::RegisterWithRegistrar(
       flutter::PluginRegistrarManager::GetInstance()
           ->GetRegistrar<flutter::PluginRegistrarWindows>(registrar));
+}
+
+HWND WindowManagerFindRunningWindow() {
+  RunningWindowSearch search{GetExecutablePath()};
+  ::EnumWindows(MatchRunningWindow, reinterpret_cast<LPARAM>(&search));
+  return search.found;
+}
+
+void WindowManagerActivateWindow(HWND window) {
+  if (window == nullptr) {
+    return;
+  }
+  DWORD pid = 0;
+  ::GetWindowThreadProcessId(window, &pid);
+  ::AllowSetForegroundWindow(pid);
+  ::PostMessageW(window, GetActivateMessage(), 0, 0);
 }

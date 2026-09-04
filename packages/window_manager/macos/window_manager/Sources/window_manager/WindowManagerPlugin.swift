@@ -282,6 +282,12 @@ public class WindowManagerPlugin: NSObject, FlutterPlugin {
         _emitEvent("should-terminate")
     }
 
+    /// Call from `NSApplicationDelegate.applicationShouldHandleReopen` so Dart
+    /// brings the window back the same way it does on the other desktops.
+    public func handleReopen() {
+        _emitEvent("activate")
+    }
+
     public func _emitEvent(_ eventName: String) {
         let args: NSDictionary = [
             "eventName": eventName,

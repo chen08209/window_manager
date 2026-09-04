@@ -61,6 +61,16 @@ abstract mixin class WindowListener {
   /// @platforms macos
   void onWindowShouldTerminate() {}
 
+  /// Emitted when another launch of the application, or a Dock reopen, asks
+  /// this instance to bring its window to the front. Nothing is shown by the
+  /// platform side; the listener decides how to reveal the window.
+  ///
+  /// On Windows the runner sends it with `WindowManagerActivateWindow`, on
+  /// Linux with `window_manager_plugin_activate`, and on macOS the application
+  /// delegate forwards `applicationShouldHandleReopen` to
+  /// `WindowManagerPlugin.handleReopen`.
+  void onWindowActivate() {}
+
   /// Emitted all events.
   void onWindowEvent(String eventName) {}
 }

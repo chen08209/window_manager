@@ -18,6 +18,15 @@ extern "C" {
 FLUTTER_PLUGIN_EXPORT void WindowManagerPluginRegisterWithRegistrar(
     FlutterDesktopPluginRegistrarRef registrar);
 
+// Finds the top-level window of another running instance of this executable,
+// or nullptr. Safe to call before the engine exists; never returns a window
+// of the calling process.
+FLUTTER_PLUGIN_EXPORT HWND WindowManagerFindRunningWindow();
+
+// Asks the plugin inside |window| to raise it, which it reports to Dart as
+// the "activate" event. Works against an elevated instance too.
+FLUTTER_PLUGIN_EXPORT void WindowManagerActivateWindow(HWND window);
+
 #if defined(__cplusplus)
 }  // extern "C"
 #endif

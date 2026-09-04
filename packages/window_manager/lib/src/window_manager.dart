@@ -30,6 +30,7 @@ const kWindowEventDocked = 'docked';
 const kWindowEventUndocked = 'undocked';
 
 const kWindowEventShouldTerminate = 'should-terminate';
+const kWindowEventActivate = 'activate';
 
 enum DockSide { left, right }
 
@@ -74,6 +75,7 @@ class WindowManager {
         kWindowEventDocked: listener.onWindowDocked,
         kWindowEventUndocked: listener.onWindowUndocked,
         kWindowEventShouldTerminate: listener.onWindowShouldTerminate,
+        kWindowEventActivate: listener.onWindowActivate,
       };
       funcMap[eventName]?.call();
     }

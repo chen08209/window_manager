@@ -46,6 +46,8 @@ static const gint kMaxRestoreCorrections = 5;
 
 G_DEFINE_TYPE(WindowManagerPlugin, window_manager_plugin, g_object_get_type())
 
+static WindowManagerPlugin* activate_target = nullptr;
+
 // Gets the window being controlled.
 GtkWindow* get_window(WindowManagerPlugin* self) {
   FlView* view = fl_plugin_registrar_get_view(self->registrar);
@@ -1032,6 +1034,9 @@ static void window_manager_plugin_handle_method_call(
 
 static void window_manager_plugin_dispose(GObject* object) {
   WindowManagerPlugin* self = WINDOW_MANAGER_PLUGIN(object);
+  if (activate_target == self) {
+    activate_target = nullptr;
+  }
   if (self->_restore_timeout_id != 0) {
     g_source_remove(self->_restore_timeout_id);
     self->_restore_timeout_id = 0;
@@ -1249,5 +1254,12 @@ void window_manager_plugin_register_with_registrar(
   fl_method_channel_set_method_call_handler(
       plugin->channel, method_call_cb, g_object_ref(plugin), g_object_unref);
 
+  activate_target = plugin;
   g_object_unref(plugin);
+}
+
+void window_manager_plugin_activate() {
+  if (activate_target != nullptr) {
+    _emit_event(activate_target, "activate");
+  }
 }

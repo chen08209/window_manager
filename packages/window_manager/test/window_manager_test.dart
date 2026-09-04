@@ -10,6 +10,9 @@ class _RecordingListener with WindowListener {
 
   @override
   void onWindowShouldTerminate() => events.add('shouldTerminate');
+
+  @override
+  void onWindowActivate() => events.add('activate');
 }
 
 void main() {
@@ -75,6 +78,19 @@ void main() {
     expect(listener.events, <String>[
       'event:$kWindowEventShouldTerminate',
       'shouldTerminate',
+    ]);
+  });
+
+  test('the activate event reaches a listener', () async {
+    final listener = _RecordingListener();
+    windowManager.addListener(listener);
+    addTearDown(() => windowManager.removeListener(listener));
+
+    await emitEvent(kWindowEventActivate);
+
+    expect(listener.events, <String>[
+      'event:$kWindowEventActivate',
+      'activate',
     ]);
   });
 
